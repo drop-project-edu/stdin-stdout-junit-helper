@@ -1,0 +1,348 @@
+package pt.ulusofona.deisi;
+
+import org.apache.commons.collections4.queue.CircularFifoQueue;
+import org.junit.Assert;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.PrintStream;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
+
+import static org.junit.Assert.fail;
+
+enum Channel {
+    STDIN, STDOUT
+}
+
+class Command {
+
+    private String text;
+    private Channel channel;
+    private ContextMessageBuilder msgBuilder;
+
+    public Command(String text, Channel channel, ContextMessageBuilder msgBuilder) {
+        this.text = text;
+        this.channel = channel;
+        this.msgBuilder = msgBuilder;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        return o.toString().equals(this.getText());
+    }
+
+    @Override
+    public String toString() {
+        return this.getText();
+    }
+
+    public String getText() {
+        return text;
+    }
+
+    public Channel getChannel() {
+        return channel;
+    }
+
+    public void validateAgainst(String realOutput, boolean showDetailedErrors) {
+        if (!Channel.STDOUT.equals(channel)) {
+            throw new IllegalStateException("This operation can only be performed on Stdout");
+        }
+
+        if (showDetailedErrors) {
+            Assert.assertEquals(msgBuilder.buildContextMessage(), getText(), realOutput);
+        } else {
+            if (!getText().equals(realOutput)) {
+                fail("Incorrect output: " + realOutput + ".\n" + msgBuilder.buildContextMessage());
+            }
+        }
+
+        Assert.assertEquals(getText(), realOutput);
+    }
+}
+
+class SupplierCommand extends Command {
+
+    private Supplier<String> supplier;
+
+    public SupplierCommand(Supplier<String> supplier, ContextMessageBuilder msgBuilder) {
+        super(null, Channel.STDIN, msgBuilder);
+        this.supplier = supplier;
+    }
+
+    @Override
+    public String getText() {
+        return supplier.get();
+    }
+}
+
+class PredicateCommand extends Command {
+
+    private Predicate<String> predicate;
+
+    public PredicateCommand(Predicate<String> predicate, ContextMessageBuilder msgBuilder) {
+        super(null, Channel.STDOUT, msgBuilder);
+        this.predicate = predicate;
+    }
+
+    @Override
+    public void validateAgainst(String realOutput, boolean showDetailedErrors) {
+        boolean isValid = predicate.test(realOutput);
+        if (!isValid) {
+            fail("Output different from expected. Actual output: " + realOutput);
+        }
+    }
+}
+
+class ExpectLineCommand extends Command {
+
+    public ExpectLineCommand(ContextMessageBuilder msgBuilder) {
+        super("", Channel.STDOUT, msgBuilder);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        return true;
+    }
+
+    @Override
+    public void validateAgainst(String realOutput, boolean showDetailedErrors) {
+        // do nothing. just consume the line
+    }
+}
+
+public class StdinStdoutHelper implements ContextMessageBuilder {
+
+    public static final int OUTPUT_BUFFER_SIZE = 5;
+
+    private List<Command> commands;
+
+    private ByteArrayOutputStream outContent = new ByteArrayOutputStream();
+    private PrintStream originalOut = System.out;
+    private InputStream originalIn = System.in;
+
+    private boolean showDetailedErrors = true;
+    private boolean writeLog = false;
+
+    private int currentCommandIdx = 0;
+    private boolean active = false;
+
+    private CircularFifoQueue<String> outputBuffer = new CircularFifoQueue<>(OUTPUT_BUFFER_SIZE);
+
+    public StdinStdoutHelper() {
+        this.commands = new ArrayList<Command>();
+    }
+
+    public StdinStdoutHelper(boolean showDetailedErrors) {
+        this.commands = new ArrayList<Command>();
+        this.showDetailedErrors = showDetailedErrors;
+    }
+
+    public StdinStdoutHelper setWriteLog(boolean writeLog) {
+        this.writeLog = writeLog;
+        return this;
+    }
+
+    public StdinStdoutHelper simulateInput(String textToReadFromKeyboard) {
+        commands.add(new Command(textToReadFromKeyboard, Channel.STDIN, this));
+        return this;
+    }
+
+    public StdinStdoutHelper simulateInput(Supplier<String> function) {
+        commands.add(new SupplierCommand(function, this));
+        return this;
+    }
+
+    public StdinStdoutHelper expectOutput(String expectedTextWrittenToConsole) {
+        commands.add(new Command(expectedTextWrittenToConsole, Channel.STDOUT, this));
+        return this;
+    }
+
+    public StdinStdoutHelper expectOutput(Predicate<String> predicate) {
+        commands.add(new PredicateCommand(predicate, this));
+        return this;
+    }
+
+    public StdinStdoutHelper expectNNumberOfLines(int expectedNumberOfLines) {
+        for (int i = 0; i < expectedNumberOfLines; i++) {
+            commands.add(new ExpectLineCommand(this));
+        }
+        return this;
+    }
+
+    public StdinStdoutHelper expectMultiLineOutput(String expectedTextWrittenToConsole) {
+        List<String> strList = new ArrayList<String>(
+                Arrays.asList(expectedTextWrittenToConsole.split("\n")));
+        if (expectedTextWrittenToConsole.endsWith("\n")) {
+            strList.add("");
+        }
+
+        StdinStdoutHelper result = this;
+        for (String expectedLine : strList) {
+            result = this.expectOutput(expectedLine);
+        }
+
+        return result;
+    }
+
+    public void start() {
+        System.setOut(new PrintStream(outContent) {
+
+            int startLineIdx = 0, endLineIdx = -1, pos = 0;
+
+            @Override
+            public void write(int b) {
+
+                super.write(b);
+                if (b == '\n') {
+                    outputBuffer.add("[OUT]: (enter)");
+                    if (writeLog) System.err.println("[OUT]:(enter)");
+                    endLineIdx = pos;
+                    String line = new String(Arrays.copyOfRange(outContent.toByteArray(), startLineIdx, endLineIdx + 1));
+                    checkLine(line);
+                    startLineIdx = pos + 1;
+                } else {
+                    if (writeLog) System.err.println("[OUT]:" + (char) b);
+                }
+                pos++;
+            }
+
+            @Override
+            public void write(byte[] buf, int off, int len) {
+                super.write(buf, off, len);
+                String content = getLine(buf, off, len);
+                outputBuffer.addAll(Arrays.stream(content.split("\\n"))
+                        .map((s) -> { if (s.equals("(enter)")) return "[OUT]: " +s; else return "[OUT]: " + s + "(enter)"; })
+                        .collect(Collectors.toCollection(ArrayList::new)));
+                if (writeLog) {
+                    System.err.println("[OUT]:" + content);
+                }
+                int i = off;
+                while (i < len) {
+                    if (buf[i] == '\n') {
+                        endLineIdx = pos;
+                        String line = new String(Arrays.copyOfRange(outContent.toByteArray(), startLineIdx, endLineIdx)); // without '\n'
+                        checkLine(line);
+                        startLineIdx = pos + 1;
+                    }
+                    i++;
+                    pos++;
+                }
+            }
+
+
+            private void checkLine(String line) {
+
+                if (currentCommandIdx < commands.size()) {
+                    Command currentCommand = commands.get(currentCommandIdx);
+                    if (currentCommand.getChannel() == Channel.STDOUT) {
+                        currentCommand.validateAgainst(line, showDetailedErrors);
+                        currentCommandIdx++;
+                    } else {
+                        fail("Expecting something from the stdin but it was something from the stdout. "
+                                        + buildContextMessage());
+                    }
+                }
+            }
+        });
+
+
+        System.setIn(new InputStream() {
+
+            StringBuffer currentBuffer = new StringBuffer();
+            int currentPositionWithinCommand = 0;
+
+            @Override
+            public int read() throws IOException {
+
+                if (currentCommandIdx < commands.size()) {
+                    Command currentCommand = commands.get(currentCommandIdx);
+                    if (currentCommand.getChannel() == Channel.STDIN) {
+                        String currentCommandStr = commands.get(currentCommandIdx).getText();
+
+                        if (currentPositionWithinCommand == currentCommandStr.length()) {
+                            currentCommandIdx++;
+                            currentPositionWithinCommand = 0;
+                            outputBuffer.add("[IN]: " + currentBuffer + "(enter)");
+                            currentBuffer.setLength(0);  // reset
+                            if (writeLog) System.err.println("[IN]:(enter)");
+                            return '\n';
+                        } else {
+                            char ch = currentCommandStr.charAt(currentPositionWithinCommand++);
+                            currentBuffer.append(ch);
+                            if (writeLog) System.err.println("[IN]:" + ch);
+                            return ch;
+                        }
+
+                    } else {
+                        fail("Expecting something from the stdin but it was something from the stdout. " +
+                                buildContextMessage());
+                    }
+
+                } else {
+                    // was expecting more stdin than needed
+                    fail("Was expecting more stdin than needed. " + buildContextMessage());
+                }
+
+                return -1;
+            }
+        });
+
+        active = true;
+    }
+
+    public void stop() {
+
+        System.setOut(originalOut);
+        System.setIn(originalIn);
+        active = false;
+
+        if (currentCommandIdx < commands.size()) {
+            fail("Program finished too early. " + buildContextMessage());
+        }
+
+    }
+
+    @Override
+    protected void finalize() throws Throwable {
+        super.finalize();
+        if (active) {
+            stop();
+        }
+    }
+
+    private static String getLine(byte[] buffer, int offset, int length) {
+
+        String result = "";
+        for (int i = offset; i < length; i++) {
+            char ch = (char) buffer[i];
+            if (ch != '\n') {
+                result += ch;
+            } else {
+                result += "(enter)\n";
+            }
+        }
+
+        return result;
+    }
+
+    public String buildContextMessage() {
+
+        if (outputBuffer.isEmpty()) {
+            return "";
+        }
+
+        String result = " Last " + OUTPUT_BUFFER_SIZE + " lines were:\n";
+        for (int i = 0; i < Math.min(OUTPUT_BUFFER_SIZE, outputBuffer.size()); i++) {
+            result += outputBuffer.get(i) + "\n";
+        }
+
+        return result;
+    }
+}
