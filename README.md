@@ -18,13 +18,13 @@ Include the following dependency on your pom file:
 
         @Test
         public void testAskName() {
-            val helper = StdinStdoutHelper()
+            StdinStdoutHelper helper = new StdinStdoutHelper()
                     .expectOutput("Enter your name")
                     .simulateInput("Pedro")
-                    .expectOutput("Your name is Pedro")
+                    .expectOutput("Your name is Pedro");
     
-            helper.start()
-            main()
-            helper.stop()
+            helper.start();
+            main(null);
+            helper.stop();
         }
     }
