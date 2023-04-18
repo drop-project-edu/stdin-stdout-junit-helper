@@ -7,9 +7,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -149,6 +149,12 @@ public class StdinStdoutHelper implements ContextMessageBuilder {
     private boolean showDetailedErrors = true;
     private boolean writeLog = false;
 
+    /**
+     * Force Line Separatgor LF Unix & MAC (\n)
+     * On Windows SO environment will delete '\r'
+     */
+    private boolean forceLineSeparatorUnix = false;
+
     private int currentCommandIdx = 0;
     private boolean active = false;
 
@@ -166,6 +172,15 @@ public class StdinStdoutHelper implements ContextMessageBuilder {
     public StdinStdoutHelper setWriteLog(boolean writeLog) {
         this.writeLog = writeLog;
         return this;
+    }
+
+    public StdinStdoutHelper setForceLineSeparatorUnix(boolean forceLineSeparatorUnix) {
+        this.forceLineSeparatorUnix = forceLineSeparatorUnix;
+        return this;
+    }
+
+    private String forceLineSeparatorUnix(String source) {
+        return source != null && this.forceLineSeparatorUnix ? source.replaceAll("\r", "") : source;
     }
 
     public StdinStdoutHelper simulateInput(String textToReadFromKeyboard) {
@@ -247,7 +262,7 @@ public class StdinStdoutHelper implements ContextMessageBuilder {
                     if (buf[i] == '\n') {
                         endLineIdx = pos;
                         String line = new String(Arrays.copyOfRange(outContent.toByteArray(), startLineIdx, endLineIdx)); // without '\n'
-                        checkLine(line);
+                        checkLine(forceLineSeparatorUnix ? forceLineSeparatorUnix(line) : line);
                         startLineIdx = pos + 1;
                     }
                     i++;
@@ -265,7 +280,7 @@ public class StdinStdoutHelper implements ContextMessageBuilder {
                         currentCommandIdx++;
                     } else {
                         fail("Expecting something from the stdin but it was something from the stdout. "
-                                        + buildContextMessage());
+                                + buildContextMessage());
                     }
                 }
             }
