@@ -9,7 +9,7 @@ Include the following dependency on your pom file:
     <dependency>
 	    <groupId>pt.ulusofona.deisi</groupId>
 	    <artifactId>stdin-stdout-junit-helper</artifactId>
-	    <version>0.1.0</version>
+	    <version>0.2.0</version>
 	</dependency>
 	
 ## How to use
