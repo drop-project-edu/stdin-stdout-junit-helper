@@ -149,12 +149,6 @@ public class StdinStdoutHelper implements ContextMessageBuilder {
     private boolean showDetailedErrors = true;
     private boolean writeLog = false;
 
-    /**
-     * Force Line Separatgor LF Unix & MAC (\n)
-     * On Windows SO environment will delete '\r'
-     */
-    private boolean forceLineSeparatorUnix = false;
-
     private int currentCommandIdx = 0;
     private boolean active = false;
 
@@ -174,13 +168,12 @@ public class StdinStdoutHelper implements ContextMessageBuilder {
         return this;
     }
 
-    public StdinStdoutHelper setForceLineSeparatorUnix(boolean forceLineSeparatorUnix) {
-        this.forceLineSeparatorUnix = forceLineSeparatorUnix;
-        return this;
-    }
-
+    /**
+     * Force Line Separatgor LF Unix & MAC (\n)
+     * On Windows SO environment will delete '\r'
+     */
     private String forceLineSeparatorUnix(String source) {
-        return source != null && this.forceLineSeparatorUnix ? source.replaceAll("\r", "") : source;
+        return source != null && SystemUtil.isWindows() ? source.replaceAll("\r", "") : source;
     }
 
     public StdinStdoutHelper simulateInput(String textToReadFromKeyboard) {
@@ -262,7 +255,7 @@ public class StdinStdoutHelper implements ContextMessageBuilder {
                     if (buf[i] == '\n') {
                         endLineIdx = pos;
                         String line = new String(Arrays.copyOfRange(outContent.toByteArray(), startLineIdx, endLineIdx)); // without '\n'
-                        checkLine(forceLineSeparatorUnix ? forceLineSeparatorUnix(line) : line);
+                        checkLine(SystemUtil.isWindows() ? forceLineSeparatorUnix(line) : line);
                         startLineIdx = pos + 1;
                     }
                     i++;
