@@ -7,9 +7,9 @@ Useful for testing java/kotlin programs interaction with the command line.
 Include the following dependency on your pom file:
 
     <dependency>
-	    <groupId>pt.ulusofona.deisi</groupId>
+	    <groupId>org.dropproject</groupId>
 	    <artifactId>stdin-stdout-junit-helper</artifactId>
-	    <version>0.2.0</version>
+	    <version>0.3.0</version>
 	</dependency>
 	
 ## How to use

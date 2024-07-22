@@ -17,10 +17,9 @@
  * limitations under the License.
  * =========================LICENSE_END==================================
  */
-package pt.ulusofona.deisi;
+package org.dropproject.stdinstdoutjunithelper;
 
 import org.apache.commons.collections4.queue.CircularFifoQueue;
-import org.junit.Assert;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -33,7 +32,8 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.fail;
 
 enum Channel {
     STDIN, STDOUT
@@ -75,14 +75,14 @@ class Command {
         }
 
         if (showDetailedErrors) {
-            Assert.assertEquals(msgBuilder.buildContextMessage(), getText(), realOutput);
+            assertEquals(getText(), realOutput, msgBuilder.buildContextMessage());
         } else {
             if (!getText().equals(realOutput)) {
                 fail("Incorrect output: " + realOutput + ".\n" + msgBuilder.buildContextMessage());
             }
         }
 
-        Assert.assertEquals(getText(), realOutput);
+        assertEquals(getText(), realOutput);
     }
 }
 
@@ -269,8 +269,8 @@ public class StdinStdoutHelper implements ContextMessageBuilder {
                 if (currentCommandIdx < commands.size()) {
                     Command currentCommand = commands.get(currentCommandIdx);
                     if (currentCommand.getChannel() == Channel.STDOUT) {
-                        currentCommand.validateAgainst(line, showDetailedErrors);
                         currentCommandIdx++;
+                        currentCommand.validateAgainst(line, showDetailedErrors);
                     } else {
                         fail("Expecting something from the stdin but it was something from the stdout. "
                                 + buildContextMessage());
@@ -331,7 +331,9 @@ public class StdinStdoutHelper implements ContextMessageBuilder {
         active = false;
 
         if (currentCommandIdx < commands.size()) {
-            fail("Program finished too early. " + buildContextMessage());
+            fail("Program finished too early. It should have printed '" +
+                    commands.get(currentCommandIdx)
+                    + "'. " + buildContextMessage());
         }
 
     }
@@ -365,7 +367,7 @@ public class StdinStdoutHelper implements ContextMessageBuilder {
             return "";
         }
 
-        String result = " Last " + OUTPUT_BUFFER_SIZE + " lines were:\n";
+        String result = "Last " + OUTPUT_BUFFER_SIZE + " lines were:\n";
         for (int i = 0; i < Math.min(OUTPUT_BUFFER_SIZE, outputBuffer.size()); i++) {
             result += outputBuffer.get(i) + "\n";
         }

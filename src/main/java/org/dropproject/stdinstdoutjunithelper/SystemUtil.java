@@ -17,7 +17,7 @@
  * limitations under the License.
  * =========================LICENSE_END==================================
  */
-package pt.ulusofona.deisi;
+package org.dropproject.stdinstdoutjunithelper;
 
 public final class SystemUtil {
 
