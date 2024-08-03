@@ -272,8 +272,7 @@ public class StdinStdoutHelper implements ContextMessageBuilder {
                         currentCommandIdx++;
                         currentCommand.validateAgainst(line, showDetailedErrors);
                     } else {
-                        fail("Expecting something from the stdin but it was something from the stdout. "
-                                + buildContextMessage());
+                        assertEquals("[IN] " + currentCommand.getText(), "[OUT] " + line, buildContextMessage());
                     }
                 }
             }
@@ -308,13 +307,12 @@ public class StdinStdoutHelper implements ContextMessageBuilder {
                         }
 
                     } else {
-                        fail("Expecting something from the stdin but it was something from the stdout. " +
-                                buildContextMessage());
+                        assertEquals("[OUT] " + currentCommand.getText(), "[IN] ...", buildContextMessage());
                     }
 
                 } else {
-                    // was expecting more stdin than needed
-                    fail("Was expecting more stdin than needed. " + buildContextMessage());
+                    // the real program was expecting more stdin than what was defined in the test
+                    fail("You have an extra [IN] that is not needed. " + buildContextMessage());
                 }
 
                 return -1;
