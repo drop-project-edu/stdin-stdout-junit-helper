@@ -20,6 +20,7 @@
 package org.dropproject.stdinstdoutjunithelper;
 
 import org.apache.commons.collections4.queue.CircularFifoQueue;
+import org.opentest4j.AssertionFailedError;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -28,6 +29,7 @@ import java.io.PrintStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -43,7 +45,7 @@ class Command {
 
     private String text;
     private Channel channel;
-    private ContextMessageBuilder msgBuilder;
+    protected ContextMessageBuilder msgBuilder;
 
     public Command(String text, Channel channel, ContextMessageBuilder msgBuilder) {
         this.text = text;
@@ -112,9 +114,42 @@ class PredicateCommand extends Command {
 
     @Override
     public void validateAgainst(String realOutput, boolean showDetailedErrors) {
-        boolean isValid = predicate.test(realOutput);
+        boolean isValid = false;
+        try {
+            isValid = predicate.test(realOutput);
+        } catch (AssertionFailedError e) {
+            if (showDetailedErrors) {
+                fail(e.getMessage() + ". " + msgBuilder.buildContextMessage());
+            } else {
+                fail(e.getMessage());
+            }
+        }
         if (!isValid) {
-            fail("Output different from expected. Actual output: " + realOutput);
+            if (showDetailedErrors) {
+                fail("Output different from expected. Actual output: " + realOutput + ". " + msgBuilder.buildContextMessage());
+            } else {
+                fail("Output different from expected. Actual output: " + realOutput);
+            }
+        }
+    }
+}
+
+class FunctionCommand extends Command {
+
+    private Function<String,String> function;
+
+    public FunctionCommand(Function<String,String> function, ContextMessageBuilder msgBuilder) {
+        super(null, Channel.STDOUT, msgBuilder);
+        this.function = function;
+    }
+
+    @Override
+    public void validateAgainst(String realOutput, boolean showDetailedErrors) {
+        String result = function.apply(realOutput);
+        if (showDetailedErrors) {
+            assertEquals(realOutput, result, msgBuilder.buildContextMessage());
+        } else {
+            assertEquals(realOutput, result);
         }
     }
 }
@@ -138,7 +173,7 @@ class ExpectLineCommand extends Command {
 
 public class StdinStdoutHelper implements ContextMessageBuilder {
 
-    public static final int OUTPUT_BUFFER_SIZE = 5;
+    public static final int DEFAULT_OUTPUT_BUFFER_SIZE = 10;
 
     private List<Command> commands;
 
@@ -152,15 +187,21 @@ public class StdinStdoutHelper implements ContextMessageBuilder {
     private int currentCommandIdx = 0;
     private boolean active = false;
 
-    private CircularFifoQueue<String> outputBuffer = new CircularFifoQueue<>(OUTPUT_BUFFER_SIZE);
+    private CircularFifoQueue<String> outputBuffer;
 
     public StdinStdoutHelper() {
-        this.commands = new ArrayList<Command>();
+        this(false);
     }
 
     public StdinStdoutHelper(boolean showDetailedErrors) {
         this.commands = new ArrayList<Command>();
         this.showDetailedErrors = showDetailedErrors;
+        this.outputBuffer = new CircularFifoQueue<>(DEFAULT_OUTPUT_BUFFER_SIZE);
+    }
+
+    public StdinStdoutHelper(boolean showDetailedErrors, int outputBufferSize) {
+        this(showDetailedErrors);
+        this.outputBuffer = new CircularFifoQueue<>(outputBufferSize);
     }
 
     public StdinStdoutHelper setWriteLog(boolean writeLog) {
@@ -191,7 +232,12 @@ public class StdinStdoutHelper implements ContextMessageBuilder {
         return this;
     }
 
-    public StdinStdoutHelper expectOutput(Predicate<String> predicate) {
+    public StdinStdoutHelper expectOutput(Function<String, String> function) {
+        commands.add(new FunctionCommand(function, this));
+        return this;
+    }
+
+    public StdinStdoutHelper matchOutput(Predicate<String> predicate) {
         commands.add(new PredicateCommand(predicate, this));
         return this;
     }
@@ -365,8 +411,8 @@ public class StdinStdoutHelper implements ContextMessageBuilder {
             return "";
         }
 
-        String result = "Last " + OUTPUT_BUFFER_SIZE + " lines were:\n";
-        for (int i = 0; i < Math.min(OUTPUT_BUFFER_SIZE, outputBuffer.size()); i++) {
+        String result = "Last " + outputBuffer.size() + " lines were:\n";
+        for (int i = 0; i < outputBuffer.size(); i++) {
             result += outputBuffer.get(i) + "\n";
         }
 

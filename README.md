@@ -9,7 +9,7 @@ Include the following dependency on your pom file:
     <dependency>
 	    <groupId>org.dropproject</groupId>
 	    <artifactId>stdin-stdout-junit-helper</artifactId>
-	    <version>0.3.1</version>
+	    <version>0.4.0</version>
 	</dependency>
 	
 ## How to use
