@@ -26,6 +26,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -393,8 +394,9 @@ public class StdinStdoutHelper implements ContextMessageBuilder {
     private static String getLine(byte[] buffer, int offset, int length) {
 
         String result = "";
-        for (int i = offset; i < length; i++) {
-            char ch = (char) buffer[i];
+        String decodedString = new String(buffer, offset, length, StandardCharsets.UTF_8);
+        for (int i = 0; i < decodedString.length(); i++) {
+            char ch = decodedString.charAt(i);
             if (ch != '\n') {
                 result += ch;
             } else {
